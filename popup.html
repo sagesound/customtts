@@ -4,86 +4,129 @@
   <title>TTS Settings</title>
   <style>
     body {
-      font-family: Arial, sans-serif;
-      margin: 10px;
-      width: 300px;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      margin: 0;
+      padding: 15px;
+      width: 350px;
+      box-sizing: border-box;
+      background-color: #1a1a1a;
+      color: #e0e0e0;
+      overflow: hidden; /* Prevent scrollbars */
     }
+
+    h3 {
+      color: #00bcd4;
+      margin: 0 0 12px 0;
+      font-size: 15px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #2d2d2d;
+    }
+
     label {
       display: block;
-      margin-top: 10px;
+      margin: 6px 0 4px;
+      color: #9e9e9e;
+      font-size: 0.82em;
     }
+
     input {
-      margin-top: 5px;
       width: 100%;
-      padding: 5px;
+      padding: 6px 8px;
+      margin: 0 0 8px;
+      background-color: #2d2d2d;
+      border: 1px solid #404040;
+      border-radius: 3px;
+      color: #ffffff;
+      font-size: 12px;
       box-sizing: border-box;
     }
+
     button {
-      margin-top: 15px;
-      padding: 10px;
       width: 100%;
-      background-color: #4CAF50;
-      color: white;
-      border: none;
-      border-radius: 5px;
+      padding: 8px;
+      margin: 6px 0;
+      background-color: #2d2d2d;
+      border: 1px solid #404040;
+      border-radius: 3px;
+      color: #00bcd4;
+      font-weight: 600;
       cursor: pointer;
+      font-size: 12px;
+      box-sizing: border-box;
     }
-    button:hover {
-      background-color: #45a049;
-    }
-    #stopButton {
-      background-color: #f44336;
-    }
-    #stopButton:hover {
-      background-color: #d32f2f;
-    }
+
     .toggle-container {
-      margin-top: 15px;
+      margin: 10px 0;
     }
+
     .toggle-label {
       display: flex;
       align-items: center;
+      justify-content: space-between;
+      color: #9e9e9e;
+      font-size: 12px;
     }
-    .toggle-label input {
-      margin-left: 10px;
+
+    input[type="checkbox"] {
+      accent-color: #00bcd4;
+      transform: scale(0.95);
+    }
+
+    /* Maintain vertical layout without overflow */
+    body {
+      display: flex;
+      flex-direction: column;
+    }
+    script {
+      display: none; /* Hide script tag from layout */
+    }
+	    #saveButton {
+      color: #4CAF50; /* Green text */
+      border-color: #4CAF50;
+    }
+
+    #saveButton:hover {
+      background-color: #4CAF50;
+      color: #1a1a1a;
+    }
+
+    #stopButton {
+      color: #ff5252; /* Red text */
+      border-color: #ff5252;
+    }
+
+    #stopButton:hover {
+      background-color: #ff5252;
+      color: #1a1a1a;
     }
   </style>
 </head>
 <body>
   <h3>Text-to-Speech Settings</h3>
 
-  <!-- API URL Field -->
   <label for="apiUrl">API URL:</label>
   <input type="text" id="apiUrl" placeholder="http://localhost:5000/tts">
 
-  <!-- API Key Field -->
-  <label for="apiKey">API Key (if required):</label>
+  <label for="apiKey">API Key:</label>
   <input type="text" id="apiKey" placeholder="Your API Key">
 
-  <!-- Speech Speed Field -->
-  <label for="speed">Speech Speed (0.5 - 2.0):</label>
-  <input type="number" id="speed" min="0.5" max="2.0" step="0.1" value="1.0">
+  <label for="speed">Speech Speed (0.1 - 10.0):</label>
+  <input type="number" id="speed" min="0.1" max="10.0" step="0.1" value="1.0">
 
-  <!-- Voice Field -->
   <label for="voice">Voice:</label>
-  <input type="text" id="voice" placeholder="Enter voice name">
+  <input type="text" id="voice" placeholder="Voice name">
 
-  <!-- Model Field -->
   <label for="model">Model:</label>
-  <input type="text" id="model" placeholder="Enter model name">
+  <input type="text" id="model" placeholder="Model name">
 
-  <!-- Streaming Mode Toggle -->
   <div class="toggle-container">
     <label class="toggle-label">
-      Streaming Mode (broken):
+      <span>Streaming Mode (broken):</span>
       <input type="checkbox" id="streamingMode">
     </label>
   </div>
 
-  <!-- Save Button -->
   <button id="saveButton">Save</button>
-
-  <!-- Stop Playback Button -->
   <button id="stopButton">Stop Playback</button>
 
   <script src="popup.js"></script>

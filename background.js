@@ -1,10 +1,38 @@
 let apiUrl = "";
 let apiKey = "";
-let speechSpeed = 1.0; // Default speech speed
-let voice = "af_bella+af_sky"; // Default voice
-let model = "kokoro"; // Default model
-let streamingMode = false; // Default to file mode
-let currentAudio = null; // Track the currently playing audio
+let speechSpeed = 1.0;
+let voice = "af_bella+af_sky";
+let model = "kokoro";
+let streamingMode = false;
+let currentAudio = null;
+let isMobile = false;
+
+// Platform detection
+browser.runtime.getPlatformInfo().then((info) => {
+  isMobile = info.os === "android";
+  initializeExtension();
+});
+
+function initializeExtension() {
+  if (isMobile) {
+    // Mobile setup
+    browser.browserAction.setPopup({ popup: "" });
+    browser.browserAction.onClicked.addListener(handleMobileClick);
+  } else {
+    // Desktop setup
+    createContextMenu();
+    browser.runtime.onInstalled.addListener(createContextMenu);
+  }
+}
+
+function handleMobileClick(tab) {
+  browser.tabs.executeScript({
+    code: "window.getSelection().toString();"
+  }).then((results) => {
+    const selectedText = results[0];
+    if (selectedText) processText(selectedText);
+  });
+}
 
 // Load settings from local storage
 browser.storage.local.get(["apiUrl", "apiKey", "speechSpeed", "voice", "model", "streamingMode"]).then((data) => {
