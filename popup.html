@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>TTS Settings</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 10px;
+      width: 300px;
+    }
+    label {
+      display: block;
+      margin-top: 10px;
+    }
+    input {
+      margin-top: 5px;
+      width: 100%;
+      padding: 5px;
+      box-sizing: border-box;
+    }
+    button {
+      margin-top: 15px;
+      padding: 10px;
+      width: 100%;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    #stopButton {
+      background-color: #f44336;
+    }
+    #stopButton:hover {
+      background-color: #d32f2f;
+    }
+    .toggle-container {
+      margin-top: 15px;
+    }
+    .toggle-label {
+      display: flex;
+      align-items: center;
+    }
+    .toggle-label input {
+      margin-left: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h3>Text-to-Speech Settings</h3>
+
+  <!-- API URL Field -->
+  <label for="apiUrl">API URL:</label>
+  <input type="text" id="apiUrl" placeholder="http://localhost:5000/tts">
+
+  <!-- API Key Field -->
+  <label for="apiKey">API Key (if required):</label>
+  <input type="text" id="apiKey" placeholder="Your API Key">
+
+  <!-- Speech Speed Field -->
+  <label for="speed">Speech Speed (0.5 - 2.0):</label>
+  <input type="number" id="speed" min="0.5" max="2.0" step="0.1" value="1.0">
+
+  <!-- Voice Field -->
+  <label for="voice">Voice:</label>
+  <input type="text" id="voice" placeholder="Enter voice name">
+
+  <!-- Model Field -->
+  <label for="model">Model:</label>
+  <input type="text" id="model" placeholder="Enter model name">
+
+  <!-- Streaming Mode Toggle -->
+  <div class="toggle-container">
+    <label class="toggle-label">
+      Streaming Mode (broken):
+      <input type="checkbox" id="streamingMode">
+    </label>
+  </div>
+
+  <!-- Save Button -->
+  <button id="saveButton">Save</button>
+
+  <!-- Stop Playback Button -->
+  <button id="stopButton">Stop Playback</button>
+
+  <script src="popup.js"></script>
+</body>
+</html>
