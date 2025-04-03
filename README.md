@@ -16,7 +16,7 @@ https://addons.mozilla.org/en-US/firefox/addon/custom-tts-reader/
 ## Description
 
 Do you have your own OpenAI-compatible Speech endpoint running and want to use it in Firefox?
-This is a TTS implementation for the OpenAI API format. It can probably be used for any OpenAI api compliant service but its made for remsky/Kokoro-FastAP.
+This is a TTS implementation for the OpenAI API format. It can probably be used for any OpenAI api compliant service but its made for remsky/Kokoro-FastAPI.
 
 Click 'Read Selected Text' in the context menu after highlighting text.
 
