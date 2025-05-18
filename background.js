@@ -26,23 +26,27 @@ function initializeExtension() {
 }
 
 function handleMobileClick(tab) {
-  browser.tabs.executeScript({
-    code: "window.getSelection().toString();"
-  }).then((results) => {
-    const selectedText = results[0];
-    if (selectedText) processText(selectedText);
-  });
+  browser.tabs
+    .executeScript({
+      code: "window.getSelection().toString();",
+    })
+    .then((results) => {
+      const selectedText = results[0];
+      if (selectedText) processText(selectedText);
+    });
 }
 
 // Load settings from local storage
-browser.storage.local.get(["apiUrl", "apiKey", "speechSpeed", "voice", "model", "streamingMode"]).then((data) => {
-  apiUrl = data.apiUrl || "http://host.docker.internal:8880/v1";
-  apiKey = data.apiKey || "not-needed";
-  speechSpeed = data.speechSpeed || 1.0;
-  voice = data.voice || "af_bella+af_sky";
-  model = data.model || "kokoro";
-  streamingMode = data.streamingMode || false; // Load streaming mode setting
-});
+browser.storage.local
+  .get(["apiUrl", "apiKey", "speechSpeed", "voice", "model", "streamingMode"])
+  .then((data) => {
+    apiUrl = data.apiUrl || "http://host.docker.internal:8880/v1";
+    apiKey = data.apiKey || "not-needed";
+    speechSpeed = data.speechSpeed || 1.0;
+    voice = data.voice || "af_bella+af_sky";
+    model = data.model || "kokoro";
+    streamingMode = data.streamingMode || false;
+  });
 
 // Update settings dynamically when changed
 browser.storage.onChanged.addListener((changes) => {
@@ -62,7 +66,7 @@ browser.storage.onChanged.addListener((changes) => {
     model = changes.model.newValue;
   }
   if (changes.streamingMode) {
-    streamingMode = changes.streamingMode.newValue; // Update streaming mode
+    streamingMode = changes.streamingMode.newValue;
   }
 });
 
@@ -80,17 +84,23 @@ function createContextMenu() {
   // Remove any existing context menu item to avoid duplicates
   browser.contextMenus.removeAll(() => {
     // Create the "Read Selected Text" context menu item
-    browser.contextMenus.create({
-      id: "readText",
-      title: "Read Selected Text",
-      contexts: ["selection"]
-    }, () => {
-      if (browser.runtime.lastError) {
-        console.error("Error creating context menu:", browser.runtime.lastError);
-      } else {
-        console.log("Context menu created successfully.");
-      }
-    });
+    browser.contextMenus.create(
+      {
+        id: "readText",
+        title: "Read Selected Text",
+        contexts: ["selection"],
+      },
+      () => {
+        if (browser.runtime.lastError) {
+          console.error(
+            "Error creating context menu:",
+            browser.runtime.lastError,
+          );
+        } else {
+          console.log("Context menu created successfully.");
+        }
+      },
+    );
   });
 }
 
@@ -108,9 +118,9 @@ browser.contextMenus.onShown.addListener((info) => {
 
 // Listener for context menu item click
 browser.contextMenus.onClicked.addListener((info) => {
-  console.log("Context menu clicked: ", info);  // Debugging log
+  console.log("Context menu clicked: ", info);
   if (info.menuItemId === "readText" && info.selectionText) {
-    console.log("Text to read: ", info.selectionText); // Debugging log
+    console.log("Text to read: ", info.selectionText);
     processText(info.selectionText);
   } else {
     console.log("No text selected or menu item ID mismatch.");
@@ -128,66 +138,96 @@ function processText(text) {
     model: model,
     input: text,
     voice: voice,
-    response_format: streamingMode ? "pcm" : "mp3", // Use PCM for streaming, MP3 for file mode
-    speed: speechSpeed
+    response_format: "mp3",
+    speed: speechSpeed,
   };
 
   const headers = {
     "Content-Type": "application/json",
-    "Authorization": `Bearer ${apiKey}`
+    Authorization: `Bearer ${apiKey}`,
   };
 
   console.log("Sending request to API URL:", apiUrl);
   console.log("Request payload:", payload);
 
+  // Make sure we're using the audio/speech endpoint
+  const endpoint = apiUrl.endsWith("/")
+    ? apiUrl + "audio/speech"
+    : apiUrl + "/audio/speech";
+
   if (streamingMode) {
-    // Streaming Mode
-    fetch(apiUrl, {
+    // Add stream=true parameter to the URL for proper streaming
+    const streamingEndpoint =
+      endpoint + (endpoint.includes("?") ? "&" : "?") + "stream=true";
+
+    console.log("Using streaming endpoint:", streamingEndpoint);
+
+    fetch(streamingEndpoint, {
       method: "POST",
       headers: headers,
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     })
       .then((response) => {
         if (!response.ok) {
           throw new Error(`API request failed with status: ${response.status}`);
         }
-        const reader = response.body.getReader();
-        const audioContext = new AudioContext();
-        let audioBuffer = null;
 
-        const processStream = ({ done, value }) => {
+        const reader = response.body.getReader();
+        let chunks = [];
+
+        // Function to process chunks
+        const processChunk = ({ done, value }) => {
           if (done) {
-            console.log("Streaming complete.");
+            console.log("Stream complete");
+
+            // Create a complete audio blob from all chunks
+            const blob = new Blob(chunks, { type: "audio/mp3" });
+            const url = URL.createObjectURL(blob);
+
+            // If we already have an audio element playing
+            if (currentAudio && !currentAudio.paused) {
+              // Store the current position
+              const currentTime = currentAudio.currentTime;
+              currentAudio.src = url;
+              currentAudio.currentTime = currentTime;
+            } else {
+              // Create new audio element
+              currentAudio = new Audio(url);
+              currentAudio.play();
+            }
+
             return;
           }
 
-          // Process PCM chunks (example: convert to audio buffer and play)
-          if (value) {
-            audioContext.decodeAudioData(value.buffer, (buffer) => {
-              audioBuffer = buffer;
-              const source = audioContext.createBufferSource();
-              source.buffer = audioBuffer;
-              source.connect(audioContext.destination);
-              source.start();
-            });
+          // Add chunk to the collection
+          chunks.push(value);
+
+          // If this is our first chunk, start playing immediately
+          if (chunks.length === 1) {
+            const blob = new Blob([value], { type: "audio/mp3" });
+            const url = URL.createObjectURL(blob);
+            currentAudio = new Audio(url);
+            currentAudio
+              .play()
+              .then(() => console.log("Started playing first chunk"))
+              .catch((e) => console.error("Error playing first chunk:", e));
           }
 
-          // Read the next chunk
-          reader.read().then(processStream);
+          // Continue reading
+          return reader.read().then(processChunk);
         };
 
-        // Start reading the stream
-        reader.read().then(processStream);
+        // Start reading
+        return reader.read().then(processChunk);
       })
       .catch((error) => {
-        console.error("Error calling TTS API:", error);
+        console.error("Error with streaming audio request:", error);
       });
   } else {
-    // File Mode
-    fetch(apiUrl, {
+    fetch(endpoint, {
       method: "POST",
       headers: headers,
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     })
       .then((response) => {
         if (!response.ok) {
