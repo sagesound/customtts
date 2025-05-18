@@ -155,79 +155,42 @@ function processText(text) {
     ? apiUrl + "audio/speech"
     : apiUrl + "/audio/speech";
 
+  // Create an AbortController to potentially cancel the request
+  const controller = new AbortController();
+
+  // If we already have audio playing, stop it
+  if (currentAudio) {
+    currentAudio.pause();
+    URL.revokeObjectURL(currentAudio.src);
+    currentAudio = null;
+  }
+
   if (streamingMode) {
-    // Add stream=true parameter to the URL for proper streaming
-    const streamingEndpoint =
-      endpoint + (endpoint.includes("?") ? "&" : "?") + "stream=true";
-
-    console.log("Using streaming endpoint:", streamingEndpoint);
-
-    fetch(streamingEndpoint, {
+    // For OpenAI API streaming mode
+    fetch(endpoint, {
       method: "POST",
       headers: headers,
       body: JSON.stringify(payload),
+      signal: controller.signal,
     })
       .then((response) => {
         if (!response.ok) {
           throw new Error(`API request failed with status: ${response.status}`);
         }
 
-        const reader = response.body.getReader();
-        let chunks = [];
-
-        // Function to process chunks
-        const processChunk = ({ done, value }) => {
-          if (done) {
-            console.log("Stream complete");
-
-            // Create a complete audio blob from all chunks
-            const blob = new Blob(chunks, { type: "audio/mp3" });
-            const url = URL.createObjectURL(blob);
-
-            // If we already have an audio element playing
-            if (currentAudio && !currentAudio.paused) {
-              // Store the current position
-              const currentTime = currentAudio.currentTime;
-              currentAudio.src = url;
-              currentAudio.currentTime = currentTime;
-            } else {
-              // Create new audio element
-              currentAudio = new Audio(url);
-              currentAudio.play();
-            }
-
-            return;
-          }
-
-          // Add chunk to the collection
-          chunks.push(value);
-
-          // If this is our first chunk, start playing immediately
-          if (chunks.length === 1) {
-            const blob = new Blob([value], { type: "audio/mp3" });
-            const url = URL.createObjectURL(blob);
-            currentAudio = new Audio(url);
-            currentAudio
-              .play()
-              .then(() => console.log("Started playing first chunk"))
-              .catch((e) => console.error("Error playing first chunk:", e));
-          }
-
-          // Continue reading
-          return reader.read().then(processChunk);
-        };
-
-        // Start reading
-        return reader.read().then(processChunk);
+        // Process the stream
+        return processStream(response);
       })
       .catch((error) => {
-        console.error("Error with streaming audio request:", error);
+        console.error("Error with TTS request:", error);
       });
   } else {
+    // Standard non-streaming request
     fetch(endpoint, {
       method: "POST",
       headers: headers,
       body: JSON.stringify(payload),
+      signal: controller.signal,
     })
       .then((response) => {
         if (!response.ok) {
@@ -235,13 +198,120 @@ function processText(text) {
         }
         return response.blob();
       })
-      .then((audioBlob) => {
-        const audioUrl = URL.createObjectURL(audioBlob);
-        currentAudio = new Audio(audioUrl);
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        currentAudio = new Audio(url);
         currentAudio.play();
       })
       .catch((error) => {
-        console.error("Error calling TTS API:", error);
+        console.error("Error with TTS request:", error);
       });
+  }
+
+  // Function to process the stream
+  async function processStream(response) {
+    const reader = response.body.getReader();
+    const mp3Chunks = [];
+
+    try {
+      // Wait for the first chunk to determine if it's streamable MP3 data
+      const { value: firstChunk, done: firstDone } = await reader.read();
+
+      if (firstDone || !firstChunk) {
+        console.log("Empty response received");
+        return;
+      }
+
+      // Add the first chunk to our collection
+      mp3Chunks.push(firstChunk);
+
+      // Try to play the first chunk if it's a valid MP3 (should have MP3 header)
+      if (firstChunk.length > 100) {
+        console.log(
+          `First chunk received (${firstChunk.length} bytes), attempting playback`,
+        );
+        playChunksAsAudio(mp3Chunks);
+      }
+
+      // Process the rest of the stream
+      let chunkCount = 1;
+      let lastUpdate = 0;
+
+      while (true) {
+        const { value, done } = await reader.read();
+
+        if (done) {
+          console.log("Stream complete");
+          // Play the complete audio one final time
+          playChunksAsAudio(mp3Chunks, true);
+          break;
+        }
+
+        // Add this chunk to our collection
+        mp3Chunks.push(value);
+        chunkCount++;
+
+        // Update the audio every few chunks
+        if (chunkCount - lastUpdate >= 5) {
+          console.log(`Processed ${chunkCount} chunks so far, updating audio`);
+          playChunksAsAudio(mp3Chunks);
+          lastUpdate = chunkCount;
+        }
+      }
+    } catch (error) {
+      console.error("Error processing stream:", error);
+    }
+  }
+
+  // Function to play the accumulated chunks as audio
+  function playChunksAsAudio(chunks, isComplete = false) {
+    // Create a blob from all chunks
+    const blob = new Blob(chunks, { type: "audio/mp3" });
+    const url = URL.createObjectURL(blob);
+
+    if (currentAudio) {
+      // Get current position and playing state
+      const currentTime = currentAudio.currentTime;
+      const wasPlaying = !currentAudio.paused;
+
+      if (wasPlaying) {
+        // Create new audio element with updated content
+        const newAudio = new Audio(url);
+
+        // Set the position to match the current playback
+        newAudio.currentTime = currentTime;
+
+        // Play the new audio
+        newAudio
+          .play()
+          .then(() => {
+            // Clean up old audio
+            URL.revokeObjectURL(currentAudio.src);
+            currentAudio.pause();
+            currentAudio = newAudio;
+
+            if (isComplete) {
+              console.log("Playing complete audio file");
+            }
+          })
+          .catch((err) => {
+            console.error("Error playing updated audio:", err);
+
+            // If setting currentTime failed, try playing from the beginning
+            if (err.name === "NotSupportedError") {
+              newAudio.currentTime = 0;
+              newAudio
+                .play()
+                .catch((e) => console.error("Still can't play audio:", e));
+            }
+          });
+      }
+    } else {
+      // First time playing
+      currentAudio = new Audio(url);
+      currentAudio.play().catch((err) => {
+        console.error("Error starting audio playback:", err);
+      });
+    }
   }
 }
