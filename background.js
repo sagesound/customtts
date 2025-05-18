@@ -7,7 +7,10 @@ let streamingMode = false;
 let currentAudio = null;
 let isMobile = false;
 
-// Platform detection
+let audioContext = null;
+let pcmStreamStopped = false;
+let pcmPlaybackTime = 0;
+
 browser.runtime.getPlatformInfo().then((info) => {
   isMobile = info.os === "android";
   initializeExtension();
@@ -15,11 +18,9 @@ browser.runtime.getPlatformInfo().then((info) => {
 
 function initializeExtension() {
   if (isMobile) {
-    // Mobile setup
     browser.browserAction.setPopup({ popup: "" });
     browser.browserAction.onClicked.addListener(handleMobileClick);
   } else {
-    // Desktop setup
     createContextMenu();
     browser.runtime.onInstalled.addListener(createContextMenu);
   }
@@ -36,7 +37,6 @@ function handleMobileClick(tab) {
     });
 }
 
-// Load settings from local storage
 browser.storage.local
   .get(["apiUrl", "apiKey", "speechSpeed", "voice", "model", "streamingMode"])
   .then((data) => {
@@ -48,97 +48,64 @@ browser.storage.local
     streamingMode = data.streamingMode || false;
   });
 
-// Update settings dynamically when changed
 browser.storage.onChanged.addListener((changes) => {
-  if (changes.apiUrl) {
-    apiUrl = changes.apiUrl.newValue;
-  }
-  if (changes.apiKey) {
-    apiKey = changes.apiKey.newValue;
-  }
-  if (changes.speechSpeed) {
-    speechSpeed = changes.speechSpeed.newValue;
-  }
-  if (changes.voice) {
-    voice = changes.voice.newValue;
-  }
-  if (changes.model) {
-    model = changes.model.newValue;
-  }
-  if (changes.streamingMode) {
-    streamingMode = changes.streamingMode.newValue;
-  }
+  if (changes.apiUrl) apiUrl = changes.apiUrl.newValue;
+  if (changes.apiKey) apiKey = changes.apiKey.newValue;
+  if (changes.speechSpeed) speechSpeed = changes.speechSpeed.newValue;
+  if (changes.voice) voice = changes.voice.newValue;
+  if (changes.model) model = changes.model.newValue;
+  if (changes.streamingMode) streamingMode = changes.streamingMode.newValue;
 });
 
-// Stop Playback Handler
 browser.runtime.onMessage.addListener((message) => {
-  if (message.action === "stopPlayback" && currentAudio) {
-    currentAudio.pause();
-    currentAudio = null;
-    console.log("Playback stopped.");
+  if (message.action === "stopPlayback") {
+    pcmStreamStopped = true;
+    if (audioContext) {
+      audioContext.close();
+      audioContext = null;
+    }
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio = null;
+    }
   }
 });
 
-// Function to create or recreate the context menu
 function createContextMenu() {
-  // Remove any existing context menu item to avoid duplicates
   browser.contextMenus.removeAll(() => {
-    // Create the "Read Selected Text" context menu item
     browser.contextMenus.create(
       {
         id: "readText",
         title: "Read Selected Text",
         contexts: ["selection"],
       },
-      () => {
-        if (browser.runtime.lastError) {
-          console.error(
-            "Error creating context menu:",
-            browser.runtime.lastError,
-          );
-        } else {
-          console.log("Context menu created successfully.");
-        }
-      },
+      () => {},
     );
   });
 }
 
-// Create the context menu when the extension is installed or updated
 browser.runtime.onInstalled.addListener(() => {
-  console.log("Extension installed or updated. Creating context menu...");
   createContextMenu();
 });
 
-// Recreate the context menu each time it is opened
 browser.contextMenus.onShown.addListener((info) => {
-  console.log("Context menu opened. Recreating context menu...");
   createContextMenu();
 });
 
-// Listener for context menu item click
 browser.contextMenus.onClicked.addListener((info) => {
-  console.log("Context menu clicked: ", info);
   if (info.menuItemId === "readText" && info.selectionText) {
-    console.log("Text to read: ", info.selectionText);
     processText(info.selectionText);
-  } else {
-    console.log("No text selected or menu item ID mismatch.");
   }
 });
 
-// Process selected text
 function processText(text) {
-  if (!apiUrl) {
-    console.error("API URL not set.");
-    return;
-  }
+  if (!apiUrl) return;
 
   const payload = {
     model: model,
     input: text,
     voice: voice,
-    response_format: "mp3",
+    response_format: streamingMode ? "pcm" : "mp3",
     speed: speechSpeed,
   };
 
@@ -147,26 +114,24 @@ function processText(text) {
     Authorization: `Bearer ${apiKey}`,
   };
 
-  console.log("Sending request to API URL:", apiUrl);
-  console.log("Request payload:", payload);
-
-  // Make sure we're using the audio/speech endpoint
   const endpoint = apiUrl.endsWith("/")
     ? apiUrl + "audio/speech"
     : apiUrl + "/audio/speech";
 
-  // Create an AbortController to potentially cancel the request
   const controller = new AbortController();
 
-  // If we already have audio playing, stop it
   if (currentAudio) {
     currentAudio.pause();
     URL.revokeObjectURL(currentAudio.src);
     currentAudio = null;
   }
+  if (audioContext) {
+    audioContext.close();
+    audioContext = null;
+  }
+  pcmStreamStopped = false;
 
   if (streamingMode) {
-    // For OpenAI API streaming mode
     fetch(endpoint, {
       method: "POST",
       headers: headers,
@@ -174,18 +139,12 @@ function processText(text) {
       signal: controller.signal,
     })
       .then((response) => {
-        if (!response.ok) {
+        if (!response.ok)
           throw new Error(`API request failed with status: ${response.status}`);
-        }
-
-        // Process the stream
-        return processStream(response);
+        return processPCMStream(response);
       })
-      .catch((error) => {
-        console.error("Error with TTS request:", error);
-      });
+      .catch(() => {});
   } else {
-    // Standard non-streaming request
     fetch(endpoint, {
       method: "POST",
       headers: headers,
@@ -193,9 +152,8 @@ function processText(text) {
       signal: controller.signal,
     })
       .then((response) => {
-        if (!response.ok) {
+        if (!response.ok)
           throw new Error(`API request failed with status: ${response.status}`);
-        }
         return response.blob();
       })
       .then((blob) => {
@@ -203,115 +161,80 @@ function processText(text) {
         currentAudio = new Audio(url);
         currentAudio.play();
       })
-      .catch((error) => {
-        console.error("Error with TTS request:", error);
-      });
+      .catch(() => {});
   }
+}
 
-  // Function to process the stream
-  async function processStream(response) {
-    const reader = response.body.getReader();
-    const mp3Chunks = [];
+async function processPCMStream(response) {
+  const sampleRate = 24000;
+  const numChannels = 1;
 
-    try {
-      // Wait for the first chunk to determine if it's streamable MP3 data
-      const { value: firstChunk, done: firstDone } = await reader.read();
+  if (audioContext) {
+    audioContext.close();
+    audioContext = null;
+  }
+  audioContext = new (window.AudioContext || window.webkitAudioContext)({
+    sampleRate: sampleRate,
+  });
+  pcmStreamStopped = false;
+  pcmPlaybackTime = audioContext.currentTime;
 
-      if (firstDone || !firstChunk) {
-        console.log("Empty response received");
-        return;
-      }
+  const reader = response.body.getReader();
+  let leftover = new Uint8Array(0);
 
-      // Add the first chunk to our collection
-      mp3Chunks.push(firstChunk);
+  async function readAndPlay() {
+    while (!pcmStreamStopped) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (!value || value.length === 0) continue;
+      if (!audioContext) break;
 
-      // Try to play the first chunk if it's a valid MP3 (should have MP3 header)
-      if (firstChunk.length > 100) {
-        console.log(
-          `First chunk received (${firstChunk.length} bytes), attempting playback`,
-        );
-        playChunksAsAudio(mp3Chunks);
-      }
+      let pcmData = new Uint8Array(leftover.length + value.length);
+      pcmData.set(leftover, 0);
+      pcmData.set(value, leftover.length);
 
-      // Process the rest of the stream
-      let chunkCount = 1;
-      let lastUpdate = 0;
+      const bytesPerSample = 2;
+      const totalSamples = Math.floor(
+        pcmData.length / bytesPerSample / numChannels,
+      );
+      const usableBytes = totalSamples * bytesPerSample * numChannels;
 
-      while (true) {
-        const { value, done } = await reader.read();
+      const usablePCM = pcmData.slice(0, usableBytes);
+      leftover = pcmData.slice(usableBytes);
 
-        if (done) {
-          console.log("Stream complete");
-          // Play the complete audio one final time
-          playChunksAsAudio(mp3Chunks, true);
-          break;
+      const audioBuffer = audioContext.createBuffer(
+        numChannels,
+        totalSamples,
+        sampleRate,
+      );
+
+      for (let channel = 0; channel < numChannels; channel++) {
+        const channelData = audioBuffer.getChannelData(channel);
+        for (let i = 0; i < totalSamples; i++) {
+          const index = (i * numChannels + channel) * bytesPerSample;
+          const sample = (usablePCM[index + 1] << 8) | usablePCM[index];
+          channelData[i] =
+            (sample & 0x8000 ? sample | ~0xffff : sample) / 32768;
         }
-
-        // Add this chunk to our collection
-        mp3Chunks.push(value);
-        chunkCount++;
-
-        // Update the audio every few chunks
-        if (chunkCount - lastUpdate >= 5) {
-          console.log(`Processed ${chunkCount} chunks so far, updating audio`);
-          playChunksAsAudio(mp3Chunks);
-          lastUpdate = chunkCount;
-        }
       }
-    } catch (error) {
-      console.error("Error processing stream:", error);
+
+      const source = audioContext.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(audioContext.destination);
+
+      const now = audioContext.currentTime;
+      if (pcmPlaybackTime < now) {
+        pcmPlaybackTime = now;
+      }
+      source.start(pcmPlaybackTime);
+      pcmPlaybackTime += audioBuffer.duration;
+
+      source.onended = () => {
+        source.disconnect();
+      };
     }
+    leftover = new Uint8Array(0);
   }
 
-  // Function to play the accumulated chunks as audio
-  function playChunksAsAudio(chunks, isComplete = false) {
-    // Create a blob from all chunks
-    const blob = new Blob(chunks, { type: "audio/mp3" });
-    const url = URL.createObjectURL(blob);
-
-    if (currentAudio) {
-      // Get current position and playing state
-      const currentTime = currentAudio.currentTime;
-      const wasPlaying = !currentAudio.paused;
-
-      if (wasPlaying) {
-        // Create new audio element with updated content
-        const newAudio = new Audio(url);
-
-        // Set the position to match the current playback
-        newAudio.currentTime = currentTime;
-
-        // Play the new audio
-        newAudio
-          .play()
-          .then(() => {
-            // Clean up old audio
-            URL.revokeObjectURL(currentAudio.src);
-            currentAudio.pause();
-            currentAudio = newAudio;
-
-            if (isComplete) {
-              console.log("Playing complete audio file");
-            }
-          })
-          .catch((err) => {
-            console.error("Error playing updated audio:", err);
-
-            // If setting currentTime failed, try playing from the beginning
-            if (err.name === "NotSupportedError") {
-              newAudio.currentTime = 0;
-              newAudio
-                .play()
-                .catch((e) => console.error("Still can't play audio:", e));
-            }
-          });
-      }
-    } else {
-      // First time playing
-      currentAudio = new Audio(url);
-      currentAudio.play().catch((err) => {
-        console.error("Error starting audio playback:", err);
-      });
-    }
-  }
+  readAndPlay().catch(() => {});
 }
