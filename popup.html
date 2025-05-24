@@ -1,134 +1,145 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-<head>
-  <title>TTS Settings</title>
-  <style>
-    body {
-      font-family: 'Segoe UI', Arial, sans-serif;
-      margin: 0;
-      padding: 15px;
-      width: 350px;
-      box-sizing: border-box;
-      background-color: #1a1a1a;
-      color: #e0e0e0;
-      overflow: hidden; /* Prevent scrollbars */
-    }
+    <head>
+        <title>TTS Settings</title>
+        <style>
+            body {
+                font-family: "Segoe UI", Arial, sans-serif;
+                margin: 0;
+                padding: 15px;
+                width: 350px;
+                box-sizing: border-box;
+                background-color: #1a1a1a;
+                color: #e0e0e0;
+                overflow: hidden; /* Prevent scrollbars */
+            }
 
-    h3 {
-      color: #00bcd4;
-      margin: 0 0 12px 0;
-      font-size: 15px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid #2d2d2d;
-    }
+            h3 {
+                color: #00bcd4;
+                margin: 0 0 12px 0;
+                font-size: 15px;
+                padding-bottom: 8px;
+                border-bottom: 1px solid #2d2d2d;
+            }
 
-    label {
-      display: block;
-      margin: 6px 0 4px;
-      color: #9e9e9e;
-      font-size: 0.82em;
-    }
+            label {
+                display: block;
+                margin: 6px 0 4px;
+                color: #9e9e9e;
+                font-size: 0.82em;
+            }
 
-    input {
-      width: 100%;
-      padding: 6px 8px;
-      margin: 0 0 8px;
-      background-color: #2d2d2d;
-      border: 1px solid #404040;
-      border-radius: 3px;
-      color: #ffffff;
-      font-size: 12px;
-      box-sizing: border-box;
-    }
+            input {
+                width: 100%;
+                padding: 6px 8px;
+                margin: 0 0 8px;
+                background-color: #2d2d2d;
+                border: 1px solid #404040;
+                border-radius: 3px;
+                color: #ffffff;
+                font-size: 12px;
+                box-sizing: border-box;
+            }
 
-    button {
-      width: 100%;
-      padding: 8px;
-      margin: 6px 0;
-      background-color: #2d2d2d;
-      border: 1px solid #404040;
-      border-radius: 3px;
-      color: #00bcd4;
-      font-weight: 600;
-      cursor: pointer;
-      font-size: 12px;
-      box-sizing: border-box;
-    }
+            button {
+                width: 100%;
+                padding: 8px;
+                margin: 6px 0;
+                background-color: #2d2d2d;
+                border: 1px solid #404040;
+                border-radius: 3px;
+                color: #00bcd4;
+                font-weight: 600;
+                cursor: pointer;
+                font-size: 12px;
+                box-sizing: border-box;
+            }
 
-    .toggle-container {
-      margin: 10px 0;
-    }
+            .toggle-container {
+                margin: 10px 0;
+            }
 
-    .toggle-label {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      color: #9e9e9e;
-      font-size: 12px;
-    }
+            .toggle-label {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                color: #9e9e9e;
+                font-size: 12px;
+            }
 
-    input[type="checkbox"] {
-      accent-color: #00bcd4;
-      transform: scale(0.95);
-    }
+            input[type="checkbox"] {
+                accent-color: #00bcd4;
+                transform: scale(0.95);
+            }
 
-    /* Maintain vertical layout without overflow */
-    body {
-      display: flex;
-      flex-direction: column;
-    }
-    script {
-      display: none; /* Hide script tag from layout */
-    }
-	    #saveButton {
-      color: #4CAF50; /* Green text */
-      border-color: #4CAF50;
-    }
+            /* Maintain vertical layout without overflow */
+            body {
+                display: flex;
+                flex-direction: column;
+            }
+            script {
+                display: none; /* Hide script tag from layout */
+            }
+            #saveButton {
+                color: #4caf50; /* Green text */
+                border-color: #4caf50;
+            }
 
-    #saveButton:hover {
-      background-color: #4CAF50;
-      color: #1a1a1a;
-    }
+            #saveButton:hover {
+                background-color: #4caf50;
+                color: #1a1a1a;
+            }
 
-    #stopButton {
-      color: #ff5252; /* Red text */
-      border-color: #ff5252;
-    }
+            #stopButton {
+                color: #ff5252; /* Red text */
+                border-color: #ff5252;
+            }
 
-    #stopButton:hover {
-      background-color: #ff5252;
-      color: #1a1a1a;
-    }
-  </style>
-</head>
-<body>
-  <h3>Text-to-Speech Settings</h3>
+            #stopButton:hover {
+                background-color: #ff5252;
+                color: #1a1a1a;
+            }
+        </style>
+    </head>
+    <body>
+        <h3>Text-to-Speech Settings</h3>
 
-  <label for="apiUrl">API URL:</label>
-  <input type="text" id="apiUrl" placeholder="http://localhost:5000/tts">
+        <label for="apiUrl">API URL:</label>
+        <input
+            type="text"
+            id="apiUrl"
+            placeholder="http://localhost:5000/tts"
+        />
 
-  <label for="apiKey">API Key:</label>
-  <input type="text" id="apiKey" placeholder="Your API Key">
+        <label for="apiKey">API Key:</label>
+        <input type="text" id="apiKey" placeholder="Your API Key" />
 
-  <label for="speed">Speech Speed (0.1 - 10.0):</label>
-  <input type="number" id="speed" min="0.1" max="10.0" step="0.1" value="1.0">
+        <label for="speed">Speech Speed (0.1 - 10.0):</label>
+        <input
+            type="number"
+            id="speed"
+            min="0.1"
+            max="10.0"
+            step="0.1"
+            value="1.0"
+        />
 
-  <label for="voice">Voice:</label>
-  <input type="text" id="voice" placeholder="Voice name">
+        <label for="voice">Voice:</label>
+        <input type="text" id="voice" placeholder="Voice name" />
 
-  <label for="model">Model:</label>
-  <input type="text" id="model" placeholder="Model name">
+        <label for="model">Model:</label>
+        <input type="text" id="model" placeholder="Model name" />
 
-  <div class="toggle-container">
-    <label class="toggle-label">
-      <span>Streaming Mode (broken):</span>
-      <input type="checkbox" id="streamingMode">
-    </label>
-  </div>
+        <div class="toggle-container">
+            <label class="toggle-label">
+                <span>Streaming Mode:</span>
+                <input type="checkbox" id="streamingMode" />
+            </label>
+        </div>
 
-  <button id="saveButton">Save</button>
-  <button id="stopButton">Stop Playback</button>
+        <button id="saveButton">Save</button>
+        <button id="stopButton">Stop Playback</button>
 
-  <script src="popup.js"></script>
-</body>
+        <script src="popup.js"></script>
+    </body>
 </html>

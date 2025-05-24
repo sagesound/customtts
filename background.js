@@ -7,7 +7,10 @@ let streamingMode = false;
 let currentAudio = null;
 let isMobile = false;
 
-// Platform detection
+let audioContext = null;
+let pcmStreamStopped = false;
+let pcmPlaybackTime = 0;
+
 browser.runtime.getPlatformInfo().then((info) => {
   isMobile = info.os === "android";
   initializeExtension();
@@ -15,193 +18,223 @@ browser.runtime.getPlatformInfo().then((info) => {
 
 function initializeExtension() {
   if (isMobile) {
-    // Mobile setup
     browser.browserAction.setPopup({ popup: "" });
     browser.browserAction.onClicked.addListener(handleMobileClick);
   } else {
-    // Desktop setup
     createContextMenu();
     browser.runtime.onInstalled.addListener(createContextMenu);
   }
 }
 
 function handleMobileClick(tab) {
-  browser.tabs.executeScript({
-    code: "window.getSelection().toString();"
-  }).then((results) => {
-    const selectedText = results[0];
-    if (selectedText) processText(selectedText);
-  });
-}
-
-// Load settings from local storage
-browser.storage.local.get(["apiUrl", "apiKey", "speechSpeed", "voice", "model", "streamingMode"]).then((data) => {
-  apiUrl = data.apiUrl || "http://host.docker.internal:8880/v1";
-  apiKey = data.apiKey || "not-needed";
-  speechSpeed = data.speechSpeed || 1.0;
-  voice = data.voice || "af_bella+af_sky";
-  model = data.model || "kokoro";
-  streamingMode = data.streamingMode || false; // Load streaming mode setting
-});
-
-// Update settings dynamically when changed
-browser.storage.onChanged.addListener((changes) => {
-  if (changes.apiUrl) {
-    apiUrl = changes.apiUrl.newValue;
-  }
-  if (changes.apiKey) {
-    apiKey = changes.apiKey.newValue;
-  }
-  if (changes.speechSpeed) {
-    speechSpeed = changes.speechSpeed.newValue;
-  }
-  if (changes.voice) {
-    voice = changes.voice.newValue;
-  }
-  if (changes.model) {
-    model = changes.model.newValue;
-  }
-  if (changes.streamingMode) {
-    streamingMode = changes.streamingMode.newValue; // Update streaming mode
-  }
-});
-
-// Stop Playback Handler
-browser.runtime.onMessage.addListener((message) => {
-  if (message.action === "stopPlayback" && currentAudio) {
-    currentAudio.pause();
-    currentAudio = null;
-    console.log("Playback stopped.");
-  }
-});
-
-// Function to create or recreate the context menu
-function createContextMenu() {
-  // Remove any existing context menu item to avoid duplicates
-  browser.contextMenus.removeAll(() => {
-    // Create the "Read Selected Text" context menu item
-    browser.contextMenus.create({
-      id: "readText",
-      title: "Read Selected Text",
-      contexts: ["selection"]
-    }, () => {
-      if (browser.runtime.lastError) {
-        console.error("Error creating context menu:", browser.runtime.lastError);
-      } else {
-        console.log("Context menu created successfully.");
-      }
+  browser.tabs
+    .executeScript({
+      code: "window.getSelection().toString();",
+    })
+    .then((results) => {
+      const selectedText = results[0];
+      if (selectedText) processText(selectedText);
     });
+}
+
+browser.storage.local
+  .get(["apiUrl", "apiKey", "speechSpeed", "voice", "model", "streamingMode"])
+  .then((data) => {
+    apiUrl = data.apiUrl || "http://host.docker.internal:8880/v1";
+    apiKey = data.apiKey || "not-needed";
+    speechSpeed = data.speechSpeed || 1.0;
+    voice = data.voice || "af_bella+af_sky";
+    model = data.model || "kokoro";
+    streamingMode = data.streamingMode || false;
+  });
+
+browser.storage.onChanged.addListener((changes) => {
+  if (changes.apiUrl) apiUrl = changes.apiUrl.newValue;
+  if (changes.apiKey) apiKey = changes.apiKey.newValue;
+  if (changes.speechSpeed) speechSpeed = changes.speechSpeed.newValue;
+  if (changes.voice) voice = changes.voice.newValue;
+  if (changes.model) model = changes.model.newValue;
+  if (changes.streamingMode) streamingMode = changes.streamingMode.newValue;
+});
+
+browser.runtime.onMessage.addListener((message) => {
+  if (message.action === "stopPlayback") {
+    pcmStreamStopped = true;
+    if (audioContext) {
+      audioContext.close();
+      audioContext = null;
+    }
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio = null;
+    }
+  }
+});
+
+function createContextMenu() {
+  browser.contextMenus.removeAll(() => {
+    browser.contextMenus.create(
+      {
+        id: "readText",
+        title: "Read Selected Text",
+        contexts: ["selection"],
+      },
+      () => {},
+    );
   });
 }
 
-// Create the context menu when the extension is installed or updated
 browser.runtime.onInstalled.addListener(() => {
-  console.log("Extension installed or updated. Creating context menu...");
   createContextMenu();
 });
 
-// Recreate the context menu each time it is opened
 browser.contextMenus.onShown.addListener((info) => {
-  console.log("Context menu opened. Recreating context menu...");
   createContextMenu();
 });
 
-// Listener for context menu item click
 browser.contextMenus.onClicked.addListener((info) => {
-  console.log("Context menu clicked: ", info);  // Debugging log
   if (info.menuItemId === "readText" && info.selectionText) {
-    console.log("Text to read: ", info.selectionText); // Debugging log
     processText(info.selectionText);
-  } else {
-    console.log("No text selected or menu item ID mismatch.");
   }
 });
 
-// Process selected text
 function processText(text) {
-  if (!apiUrl) {
-    console.error("API URL not set.");
-    return;
-  }
+  if (!apiUrl) return;
 
   const payload = {
     model: model,
     input: text,
     voice: voice,
-    response_format: streamingMode ? "pcm" : "mp3", // Use PCM for streaming, MP3 for file mode
-    speed: speechSpeed
+    response_format: streamingMode ? "pcm" : "mp3",
+    speed: speechSpeed,
   };
 
   const headers = {
     "Content-Type": "application/json",
-    "Authorization": `Bearer ${apiKey}`
+    Authorization: `Bearer ${apiKey}`,
   };
 
-  console.log("Sending request to API URL:", apiUrl);
-  console.log("Request payload:", payload);
+  const endpoint = apiUrl.endsWith("/")
+    ? apiUrl + "audio/speech"
+    : apiUrl + "/audio/speech";
+
+  const controller = new AbortController();
+
+  if (currentAudio) {
+    currentAudio.pause();
+    URL.revokeObjectURL(currentAudio.src);
+    currentAudio = null;
+  }
+  if (audioContext) {
+    audioContext.close();
+    audioContext = null;
+  }
+  pcmStreamStopped = false;
 
   if (streamingMode) {
-    // Streaming Mode
-    fetch(apiUrl, {
+    fetch(endpoint, {
       method: "POST",
       headers: headers,
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal: controller.signal,
     })
       .then((response) => {
-        if (!response.ok) {
+        if (!response.ok)
           throw new Error(`API request failed with status: ${response.status}`);
-        }
-        const reader = response.body.getReader();
-        const audioContext = new AudioContext();
-        let audioBuffer = null;
-
-        const processStream = ({ done, value }) => {
-          if (done) {
-            console.log("Streaming complete.");
-            return;
-          }
-
-          // Process PCM chunks (example: convert to audio buffer and play)
-          if (value) {
-            audioContext.decodeAudioData(value.buffer, (buffer) => {
-              audioBuffer = buffer;
-              const source = audioContext.createBufferSource();
-              source.buffer = audioBuffer;
-              source.connect(audioContext.destination);
-              source.start();
-            });
-          }
-
-          // Read the next chunk
-          reader.read().then(processStream);
-        };
-
-        // Start reading the stream
-        reader.read().then(processStream);
+        return processPCMStream(response);
       })
-      .catch((error) => {
-        console.error("Error calling TTS API:", error);
-      });
+      .catch(() => {});
   } else {
-    // File Mode
-    fetch(apiUrl, {
+    fetch(endpoint, {
       method: "POST",
       headers: headers,
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal: controller.signal,
     })
       .then((response) => {
-        if (!response.ok) {
+        if (!response.ok)
           throw new Error(`API request failed with status: ${response.status}`);
-        }
         return response.blob();
       })
-      .then((audioBlob) => {
-        const audioUrl = URL.createObjectURL(audioBlob);
-        currentAudio = new Audio(audioUrl);
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        currentAudio = new Audio(url);
         currentAudio.play();
       })
-      .catch((error) => {
-        console.error("Error calling TTS API:", error);
-      });
+      .catch(() => {});
   }
+}
+
+async function processPCMStream(response) {
+  const sampleRate = 24000;
+  const numChannels = 1;
+
+  if (audioContext) {
+    audioContext.close();
+    audioContext = null;
+  }
+  audioContext = new (window.AudioContext || window.webkitAudioContext)({
+    sampleRate: sampleRate,
+  });
+  pcmStreamStopped = false;
+  pcmPlaybackTime = audioContext.currentTime;
+
+  const reader = response.body.getReader();
+  let leftover = new Uint8Array(0);
+
+  async function readAndPlay() {
+    while (!pcmStreamStopped) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (!value || value.length === 0) continue;
+      if (!audioContext) break;
+
+      let pcmData = new Uint8Array(leftover.length + value.length);
+      pcmData.set(leftover, 0);
+      pcmData.set(value, leftover.length);
+
+      const bytesPerSample = 2;
+      const totalSamples = Math.floor(
+        pcmData.length / bytesPerSample / numChannels,
+      );
+      const usableBytes = totalSamples * bytesPerSample * numChannels;
+
+      const usablePCM = pcmData.slice(0, usableBytes);
+      leftover = pcmData.slice(usableBytes);
+
+      const audioBuffer = audioContext.createBuffer(
+        numChannels,
+        totalSamples,
+        sampleRate,
+      );
+
+      for (let channel = 0; channel < numChannels; channel++) {
+        const channelData = audioBuffer.getChannelData(channel);
+        for (let i = 0; i < totalSamples; i++) {
+          const index = (i * numChannels + channel) * bytesPerSample;
+          const sample = (usablePCM[index + 1] << 8) | usablePCM[index];
+          channelData[i] =
+            (sample & 0x8000 ? sample | ~0xffff : sample) / 32768;
+        }
+      }
+
+      const source = audioContext.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(audioContext.destination);
+
+      const now = audioContext.currentTime;
+      if (pcmPlaybackTime < now) {
+        pcmPlaybackTime = now;
+      }
+      source.start(pcmPlaybackTime);
+      pcmPlaybackTime += audioBuffer.duration;
+
+      source.onended = () => {
+        source.disconnect();
+      };
+    }
+    leftover = new Uint8Array(0);
+  }
+
+  readAndPlay().catch(() => {});
 }
