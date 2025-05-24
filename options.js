@@ -12,7 +12,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Load settings
   browser.storage.local.get(["apiUrl", "apiKey", "speechSpeed", "voice", "model", "streamingMode"])
     .then((data) => {
-      apiUrlInput.value = data.apiUrl || "http://host.docker.internal:8880/v1/audio/speech";
+      apiUrlInput.value = data.apiUrl || "http://host.docker.internal:8880/v1/";
       apiKeyInput.value = data.apiKey || "not-needed";
       voiceInput.value = data.voice || "af_bella+bf_emma+af_nicole";
       speedInput.value = data.speechSpeed || 1.0;
