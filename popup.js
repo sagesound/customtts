@@ -7,9 +7,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const modelInput = document.getElementById("model");
   const streamingModeInput = document.getElementById("streamingMode");
   const stopButton = document.getElementById("stopButton");
+  const volumeInput = document.getElementById("volume");
 
   // Load settings from local storage
-  browser.storage.local.get(["apiUrl", "apiKey", "speechSpeed", "voice", "model", "streamingMode"])
+  browser.storage.local.get(["apiUrl", "apiKey", "speechSpeed", "voice", "model", "streamingMode","outputVolume"])
     .then((data) => {
       apiUrlInput.value = data.apiUrl || "http://host.docker.internal:8880/v1/audio/speech";
       apiKeyInput.value = data.apiKey || "not-needed";
@@ -17,6 +18,7 @@ document.addEventListener("DOMContentLoaded", () => {
       speedInput.value = data.speechSpeed || 1.0;
       modelInput.value = data.model || "kokoro";
       streamingModeInput.checked = data.streamingMode || false; // Load streaming mode setting
+	  volumeInput.value = data.outputVolume ?? 1.0;
     })
     .catch((error) => {
       console.error("Error loading settings:", error);
@@ -30,6 +32,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const voice = voiceInput.value.trim();
     const model = modelInput.value.trim();
     const streamingMode = streamingModeInput.checked;
+	const volume = parseFloat(volumeInput.value);
 
     if (!apiUrl) {
       alert("API URL cannot be empty.");
@@ -39,6 +42,10 @@ document.addEventListener("DOMContentLoaded", () => {
       alert("Speech speed must be between 0.5 and 2.0.");
       return;
     }
+	if (isNaN(volume) || volume < 0 || volume > 1) {
+    alert("Volume must be between 0 and 1.");
+    return;
+	}
 
     try {
       await browser.storage.local.set({
@@ -47,7 +54,8 @@ document.addEventListener("DOMContentLoaded", () => {
         voice,
         speechSpeed: speed,
         model,
-        streamingMode // Save streaming mode setting
+        streamingMode, // Save streaming mode setting
+		outputVolume: volume
       });
       alert("Settings saved!");
     } catch (error) {

@@ -6,6 +6,7 @@ let model = "kokoro";
 let streamingMode = false;
 let currentAudio = null;
 let isMobile = false;
+let gainNode = null;
 
 let audioContext = null;
 let pcmStreamStopped = false;
@@ -38,7 +39,7 @@ function handleMobileClick(tab) {
 }
 
 browser.storage.local
-  .get(["apiUrl", "apiKey", "speechSpeed", "voice", "model", "streamingMode"])
+  .get(["apiUrl", "apiKey", "speechSpeed", "voice", "model", "streamingMode", "outputVolume"])
   .then((data) => {
     apiUrl = data.apiUrl || "http://host.docker.internal:8880/v1";
     apiKey = data.apiKey || "not-needed";
@@ -46,6 +47,7 @@ browser.storage.local
     voice = data.voice || "af_bella+af_sky";
     model = data.model || "kokoro";
     streamingMode = data.streamingMode || false;
+	if (gainNode) gainNode.gain.value = data.outputVolume ?? 1;
   });
 
 browser.storage.onChanged.addListener((changes) => {
@@ -55,6 +57,7 @@ browser.storage.onChanged.addListener((changes) => {
   if (changes.voice) voice = changes.voice.newValue;
   if (changes.model) model = changes.model.newValue;
   if (changes.streamingMode) streamingMode = changes.streamingMode.newValue;
+  if (changes.outputVolume && gainNode) gainNode.gain.value = changes.outputVolume.newValue;
 });
 
 browser.runtime.onMessage.addListener((message) => {
@@ -156,9 +159,10 @@ function processText(text) {
           throw new Error(`API request failed with status: ${response.status}`);
         return response.blob();
       })
-      .then((blob) => {
+      .then(async (blob) => {
         const url = URL.createObjectURL(blob);
         currentAudio = new Audio(url);
+		currentAudio.volume = (await browser.storage.local.get("outputVolume")).outputVolume ?? 1;
         currentAudio.play();
       })
       .catch(() => {});
@@ -176,6 +180,12 @@ async function processPCMStream(response) {
   audioContext = new (window.AudioContext || window.webkitAudioContext)({
     sampleRate: sampleRate,
   });
+// Get the volume from storage and apply it to gain node
+  const storedVolume = (await browser.storage.local.get("outputVolume")).outputVolume ?? 1;
+  gainNode = audioContext.createGain();
+  gainNode.gain.value = storedVolume; // Set the volume from storage
+  gainNode.connect(audioContext.destination);
+
   pcmStreamStopped = false;
   pcmPlaybackTime = audioContext.currentTime;
 
@@ -220,8 +230,9 @@ async function processPCMStream(response) {
 
       const source = audioContext.createBufferSource();
       source.buffer = audioBuffer;
-      source.connect(audioContext.destination);
-
+      // Connect through the gain node with the correct volume
+	  source.connect(gainNode);
+      
       const now = audioContext.currentTime;
       if (pcmPlaybackTime < now) {
         pcmPlaybackTime = now;

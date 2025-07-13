@@ -8,9 +8,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const modelInput = document.getElementById("model");
   const streamingModeInput = document.getElementById("streamingMode");
   const stopButton = document.getElementById("stopButton");
+  const volumeInput = document.getElementById("volume");
 
   // Load settings
-  browser.storage.local.get(["apiUrl", "apiKey", "speechSpeed", "voice", "model", "streamingMode"])
+  browser.storage.local.get(["apiUrl", "apiKey", "speechSpeed", "voice", "model", "streamingMode", "outputVolume"])
     .then((data) => {
       apiUrlInput.value = data.apiUrl || "http://host.docker.internal:8880/v1/";
       apiKeyInput.value = data.apiKey || "not-needed";
@@ -18,6 +19,7 @@ document.addEventListener("DOMContentLoaded", () => {
       speedInput.value = data.speechSpeed || 1.0;
       modelInput.value = data.model || "kokoro";
       streamingModeInput.checked = data.streamingMode || false;
+	  volumeInput.value = data.outputVolume ?? 1.0;
     });
 
   // Save settings
@@ -28,6 +30,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const voice = voiceInput.value.trim();
     const model = modelInput.value.trim();
     const streamingMode = streamingModeInput.checked;
+	const volume = parseFloat(volumeInput.value);
 
     if (!apiUrl) {
       alert("API URL cannot be empty.");
@@ -37,9 +40,13 @@ document.addEventListener("DOMContentLoaded", () => {
       alert("Speech speed must be between 0.1 and 10.0.");
       return;
     }
+    if (isNaN(volume) || volume < 0 || volume > 1) {
+      alert("Volume must be between 0 and 1.");
+      return;
+    }
 
     try {
-      await browser.storage.local.set({ apiUrl, apiKey, voice, speechSpeed: speed, model, streamingMode });
+      await browser.storage.local.set({ apiUrl, apiKey, voice, speechSpeed: speed, model, streamingMode, outputVolume: volume});
       alert("Settings saved!");
     } catch (error) {
       console.error("Save failed:", error);
