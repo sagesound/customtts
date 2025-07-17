@@ -21,7 +21,9 @@ This is a TTS implementation for the OpenAI API format. It can probably be used 
 Click 'Read Selected Text' in the context menu after highlighting text.
 
 You can change the API URL, API key, speed and voice by clicking the extension icon in the toolbar.
+If no checkbox is checked, it will generate the whole audio before starting playback.
 The streaming mode is the prefered way of using the extension. Credits to [rampadc](https://github.com/rampadc/) for fixing the code.
+The download mode will provide an mp3 file.
 
 Since you can host your own speech endpoint, privacy and accessibility are as good as the service you're running.
 
