@@ -4,6 +4,7 @@ let speechSpeed = 1.0;
 let voice = "af_bella+af_sky";
 let model = "kokoro";
 let streamingMode = false;
+let downloadMode = false;
 let currentAudio = null;
 let isMobile = false;
 let gainNode = null;
@@ -34,12 +35,19 @@ function handleMobileClick(tab) {
     })
     .then((results) => {
       const selectedText = results[0];
-      if (selectedText) processText(selectedText);
+      if (selectedText) {
+        if (downloadMode && isMobile) {
+          // Mobile download mode - create a download link
+          processMobileDownload(selectedText);
+        } else {
+          processText(selectedText);
+        }
+      }
     });
 }
 
 browser.storage.local
-  .get(["apiUrl", "apiKey", "speechSpeed", "voice", "model", "streamingMode", "outputVolume"])
+  .get(["apiUrl", "apiKey", "speechSpeed", "voice", "model", "streamingMode", "downloadMode", "outputVolume"])
   .then((data) => {
     apiUrl = data.apiUrl || "http://host.docker.internal:8880/v1";
     apiKey = data.apiKey || "not-needed";
@@ -47,6 +55,7 @@ browser.storage.local
     voice = data.voice || "af_bella+af_sky";
     model = data.model || "kokoro";
     streamingMode = data.streamingMode || false;
+	downloadMode = data.downloadMode || false;
 	if (gainNode) gainNode.gain.value = data.outputVolume ?? 1;
   });
 
@@ -57,6 +66,7 @@ browser.storage.onChanged.addListener((changes) => {
   if (changes.voice) voice = changes.voice.newValue;
   if (changes.model) model = changes.model.newValue;
   if (changes.streamingMode) streamingMode = changes.streamingMode.newValue;
+  if (changes.downloadMode) downloadMode = changes.downloadMode.newValue;
   if (changes.outputVolume && gainNode) gainNode.gain.value = changes.outputVolume.newValue;
 });
 
@@ -134,7 +144,7 @@ function processText(text) {
   }
   pcmStreamStopped = false;
 
-  if (streamingMode) {
+  if (streamingMode) { //Stream Mode
     fetch(endpoint, {
       method: "POST",
       headers: headers,
@@ -147,7 +157,41 @@ function processText(text) {
         return processPCMStream(response);
       })
       .catch(() => {});
-  } else {
+  } else if (downloadMode) { //Download Mode
+    if (isMobile) {
+      processMobileDownload(text);
+    } else {
+      // Desktop download
+      fetch(endpoint, {
+        method: "POST",
+        headers: headers,
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      })
+        .then((response) => {
+          if (!response.ok)
+            throw new Error(`API request failed with status: ${response.status}`);
+          return response.blob();
+        })
+        .then(async (blob) => {
+          const url = URL.createObjectURL(blob);
+          const now = new Date();
+			const timestamp = now.getFullYear() + '-' + 
+			String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+			String(now.getDate()).padStart(2, '0') + '_' + 
+			String(now.getHours()).padStart(2, '0') + '-' + 
+			String(now.getMinutes()).padStart(2, '0') + '-' + 
+			String(now.getSeconds()).padStart(2, '0');
+          await browser.downloads.download({
+            url: url,
+            filename: `tts-audio-${timestamp}.mp3`,
+            conflictAction: "overwrite",
+            saveAs: true
+          });
+        })
+        .catch(() => {});
+    }
+  }  else { //MP3 Mode
     fetch(endpoint, {
       method: "POST",
       headers: headers,
@@ -167,6 +211,110 @@ function processText(text) {
       })
       .catch(() => {});
   }
+}
+
+function processMobileDownload(text) {   //Mobile download logic is made with the Kimi K2 ai since I had no clue how to initiate a download of a blob url. On Desktop you could do "Right-Click -> Save as..", oh well... it works. If someone smart is able to make a better code by hand, please do.
+  if (!apiUrl) return;
+
+  const payload = {
+    model: model,
+    input: text,
+    voice: voice,
+    response_format: "mp3",
+    speed: speechSpeed,
+  };
+
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${apiKey}`,
+  };
+
+  const endpoint = apiUrl.endsWith("/")
+    ? apiUrl + "audio/speech"
+    : apiUrl + "/audio/speech";
+
+  // Show processing message
+  browser.tabs.executeScript({
+    code: `
+      const toast = document.createElement('div');
+      toast.textContent = 'Preparing download...';
+      toast.id = 'tts-download-toast';
+      toast.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#00bcd4;color:white;padding:12px 24px;border-radius:4px;z-index:10000;font-family:Arial,sans-serif;font-size:14px;pointer-events:none;';
+      document.body.appendChild(toast);
+    `
+  });
+
+  // Get the current tab ID first
+  browser.tabs.query({active: true, currentWindow: true}).then((tabs) => {
+    const currentTab = tabs[0];
+    
+    // Inject the fetch directly into the page
+    browser.tabs.executeScript(currentTab.id, {
+      code: `
+        (async function() {
+          try {
+            const payload = ${JSON.stringify(payload)};
+            const headers = ${JSON.stringify(headers)};
+            const endpoint = '${endpoint}';
+            
+            const response = await fetch(endpoint, {
+              method: 'POST',
+              headers: headers,
+              body: JSON.stringify(payload)
+            });
+            
+            if (!response.ok) {
+              throw new Error('API request failed: ' + response.status);
+            }
+            
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const now = new Date();
+			const timestamp = now.getFullYear() + '-' + 
+			String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+			String(now.getDate()).padStart(2, '0') + '_' + 
+			String(now.getHours()).padStart(2, '0') + '-' + 
+			String(now.getMinutes()).padStart(2, '0') + '-' + 
+			String(now.getSeconds()).padStart(2, '0');
+            
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'tts-audio-' + timestamp + '.mp3';
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            
+            link.click();
+            
+            // Cleanup
+            setTimeout(() => {
+              URL.revokeObjectURL(url);
+              link.remove();
+            }, 1000);
+            
+            // Remove toast and show success
+            const toast = document.getElementById('tts-download-toast');
+            if (toast) toast.remove();
+            
+            const successToast = document.createElement('div');
+            successToast.textContent = 'Download started';
+            successToast.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#00bcd4;color:white;padding:12px 24px;border-radius:4px;z-index:10000;font-family:Arial,sans-serif;font-size:14px;pointer-events:none;';
+            document.body.appendChild(successToast);
+            setTimeout(() => successToast.remove(), 2000);
+            
+          } catch (error) {
+            const toast = document.getElementById('tts-download-toast');
+            if (toast) toast.remove();
+            
+            const errorToast = document.createElement('div');
+            errorToast.textContent = 'Download failed: ' + error.message;
+            errorToast.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#ff5252;color:white;padding:12px 24px;border-radius:4px;z-index:10000;font-family:Arial,sans-serif;font-size:14px;pointer-events:none;';
+            document.body.appendChild(errorToast);
+            setTimeout(() => errorToast.remove(), 3000);
+          }
+        })();
+      `
+    });
+  });
 }
 
 async function processPCMStream(response) {

@@ -102,6 +102,12 @@
         font-size: 15px;
       }
     }
+	.mode-warning {
+      color: #ff9800;
+      font-size: 0.8em;
+      margin-top: 5px;
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -127,6 +133,15 @@
       Streaming Mode:
       <input type="checkbox" id="streamingMode">
     </label>
+    <div id="streamingWarning" class="mode-warning">Cannot be enabled with Download Mode</div>
+  </div>
+
+  <div class="toggle-container">
+    <label class="toggle-label">
+      Download Mode:
+      <input type="checkbox" id="downloadMode">
+    </label>
+    <div id="downloadWarning" class="mode-warning">Cannot be enabled with Streaming Mode</div>
   </div>
   <label for="volume">Volume:</label>
   <input type="range" id="volume" min="0" max="1" step="0.01" value="1.0">

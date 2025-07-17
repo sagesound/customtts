@@ -6,23 +6,44 @@ document.addEventListener("DOMContentLoaded", () => {
   const voiceInput = document.getElementById("voice");
   const modelInput = document.getElementById("model");
   const streamingModeInput = document.getElementById("streamingMode");
+  const downloadModeInput = document.getElementById("downloadMode");
   const stopButton = document.getElementById("stopButton");
   const volumeInput = document.getElementById("volume");
+  const streamingWarning = document.getElementById("streamingWarning");
+  const downloadWarning = document.getElementById("downloadWarning");
 
   // Load settings from local storage
-  browser.storage.local.get(["apiUrl", "apiKey", "speechSpeed", "voice", "model", "streamingMode","outputVolume"])
+  browser.storage.local.get(["apiUrl", "apiKey", "speechSpeed", "voice", "model", "streamingMode", "downloadMode", "outputVolume"])
     .then((data) => {
-      apiUrlInput.value = data.apiUrl || "http://host.docker.internal:8880/v1/audio/speech";
+      apiUrlInput.value = data.apiUrl || "http://host.docker.internal:8880/v1/";
       apiKeyInput.value = data.apiKey || "not-needed";
       voiceInput.value = data.voice || "af_bella+bf_emma+af_nicole";
       speedInput.value = data.speechSpeed || 1.0;
       modelInput.value = data.model || "kokoro";
       streamingModeInput.checked = data.streamingMode || false; // Load streaming mode setting
+	  downloadModeInput.checked = data.downloadMode || false;
 	  volumeInput.value = data.outputVolume ?? 1.0;
     })
     .catch((error) => {
       console.error("Error loading settings:", error);
     });
+	
+	// Handle mutual exclusivity between streaming and download modes
+	streamingModeInput.addEventListener("change", () => {
+    if (streamingModeInput.checked && downloadModeInput.checked) {
+      downloadModeInput.checked = false;
+      streamingWarning.style.display = "none";
+      downloadWarning.style.display = "none";
+    }
+  });
+
+  downloadModeInput.addEventListener("change", () => {
+    if (downloadModeInput.checked && streamingModeInput.checked) {
+      streamingModeInput.checked = false;
+      streamingWarning.style.display = "none";
+      downloadWarning.style.display = "none";
+    }
+  });
 
   // Save settings to local storage
   saveButton.addEventListener("click", async () => {
@@ -32,6 +53,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const voice = voiceInput.value.trim();
     const model = modelInput.value.trim();
     const streamingMode = streamingModeInput.checked;
+	const downloadMode = downloadModeInput.checked;
 	const volume = parseFloat(volumeInput.value);
 
     if (!apiUrl) {
@@ -55,6 +77,7 @@ document.addEventListener("DOMContentLoaded", () => {
         speechSpeed: speed,
         model,
         streamingMode, // Save streaming mode setting
+		downloadMode,
 		outputVolume: volume
       });
       alert("Settings saved!");

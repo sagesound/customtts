@@ -7,11 +7,14 @@ document.addEventListener("DOMContentLoaded", () => {
   const voiceInput = document.getElementById("voice");
   const modelInput = document.getElementById("model");
   const streamingModeInput = document.getElementById("streamingMode");
+  const downloadModeInput = document.getElementById("downloadMode");
   const stopButton = document.getElementById("stopButton");
   const volumeInput = document.getElementById("volume");
+  const streamingWarning = document.getElementById("streamingWarning");
+  const downloadWarning = document.getElementById("downloadWarning");
 
   // Load settings
-  browser.storage.local.get(["apiUrl", "apiKey", "speechSpeed", "voice", "model", "streamingMode", "outputVolume"])
+  browser.storage.local.get(["apiUrl", "apiKey", "speechSpeed", "voice", "model", "streamingMode", "downloadMode", "outputVolume"])
     .then((data) => {
       apiUrlInput.value = data.apiUrl || "http://host.docker.internal:8880/v1/";
       apiKeyInput.value = data.apiKey || "not-needed";
@@ -19,9 +22,27 @@ document.addEventListener("DOMContentLoaded", () => {
       speedInput.value = data.speechSpeed || 1.0;
       modelInput.value = data.model || "kokoro";
       streamingModeInput.checked = data.streamingMode || false;
+	  downloadModeInput.checked = data.downloadMode || false;
 	  volumeInput.value = data.outputVolume ?? 1.0;
     });
 
+// Handle mutual exclusivity between streaming and download modes
+  streamingModeInput.addEventListener("change", () => {
+    if (streamingModeInput.checked && downloadModeInput.checked) {
+      downloadModeInput.checked = false;
+      streamingWarning.style.display = "none";
+      downloadWarning.style.display = "none";
+    }
+  });
+
+  downloadModeInput.addEventListener("change", () => {
+    if (downloadModeInput.checked && streamingModeInput.checked) {
+      streamingModeInput.checked = false;
+      streamingWarning.style.display = "none";
+      downloadWarning.style.display = "none";
+    }
+  });
+  
   // Save settings
   saveButton.addEventListener("click", async () => {
     const apiUrl = apiUrlInput.value.trim();
@@ -30,6 +51,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const voice = voiceInput.value.trim();
     const model = modelInput.value.trim();
     const streamingMode = streamingModeInput.checked;
+	const downloadMode = downloadModeInput.checked;
 	const volume = parseFloat(volumeInput.value);
 
     if (!apiUrl) {
@@ -46,7 +68,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     try {
-      await browser.storage.local.set({ apiUrl, apiKey, voice, speechSpeed: speed, model, streamingMode, outputVolume: volume});
+      await browser.storage.local.set({ apiUrl, apiKey, voice, speechSpeed: speed, model, streamingMode, downloadMode, outputVolume: volume});
       alert("Settings saved!");
     } catch (error) {
       console.error("Save failed:", error);
