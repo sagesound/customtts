@@ -216,7 +216,7 @@ function processText(text) {
     audioContext.close();
     audioContext = null;
   }
-  pcmStreamStopped = true;
+  pcmStreamStopped = false;
   
   audioQueue.forEach(url => URL.revokeObjectURL(url));
   audioQueue = [];
